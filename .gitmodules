@@ -4,3 +4,6 @@
 [submodule "studies/portfolio-frontier"]
 	path = studies/portfolio-frontier
 	url = https://github.com/cgarryZA/portfolio-frontier.git
+[submodule "studies/relative-value"]
+	path = studies/relative-value
+	url = https://github.com/cgarryZA/relative-value.git

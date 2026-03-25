@@ -15,7 +15,11 @@
       "Bash(python \"C:/Users/z00503ku/Documents/Quant/src/generate_plots.py\")",
       "WebFetch(domain:esportfire.com)",
       "WebFetch(domain:pricempire.com)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(python src/index_portfolios.py)",
+      "Bash(python src/match_ef300.py)",
+      "Read(//c/Users/z00503ku/Documents/relative-value/**)",
+      "Bash(python src/precompute_rv.py --prices-dir \"C:/Users/z00503ku/Documents/CSGO/Data/processed\" --min-days 300)"
     ]
   }
 }

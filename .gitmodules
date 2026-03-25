@@ -1,0 +1,6 @@
+[submodule "studies/case-ev"]
+	path = studies/case-ev
+	url = https://github.com/cgarryZA/case-ev.git
+[submodule "studies/portfolio-frontier"]
+	path = studies/portfolio-frontier
+	url = https://github.com/cgarryZA/portfolio-frontier.git

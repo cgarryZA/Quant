@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(python src/alpha_investigation.py)",
+      "Bash(python src/neutral_strategy.py)",
+      "Read(//c/Users/z00503ku/Documents/portfolio-frontier/**)",
+      "Bash(python src/precompute_frontier.py --prices-dir \"/c/Users/z00503ku/Documents/CSGO/Data/processed\")",
+      "Bash(tasklist)",
+      "Bash(python src/precompute_frontier.py --prices-dir \"C:/Users/z00503ku/Documents/CSGO/Data/processed\" --max-items 500 --min-days 300)",
+      "Bash(gh auth:*)",
+      "Bash(git config:*)",
+      "Bash(winget install:*)",
+      "Bash(pip install:*)",
+      "Bash(python \"C:/Users/z00503ku/Documents/Quant/src/generate_plots.py\")",
+      "WebFetch(domain:esportfire.com)",
+      "WebFetch(domain:pricempire.com)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

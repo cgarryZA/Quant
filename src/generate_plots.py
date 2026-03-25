@@ -99,19 +99,15 @@ TYPE_COLORS = {
     'glove': '#f97316', 'other': '#6b7280',
 }
 
-# Annualize frontier values (stored as daily)
-import math
-ann_factor_ret = 365
-ann_factor_risk = math.sqrt(365)
-
+# All values now annualized in the JSON
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7), width_ratios=[1, 1])
 fig.subplots_adjust(wspace=0.3)
 
-# LEFT: Frontier zoomed in (annualized)
-frisks_ann = [p['risk'] * ann_factor_risk for p in frontier]
-frets_ann = [p['ret'] * ann_factor_ret for p in frontier]
+# LEFT: Frontier zoomed in
+frisks = [p['risk'] for p in frontier]
+frets = [p['ret'] for p in frontier]
 
-ax1.plot(frisks_ann, frets_ann, color='#38bdf8', linewidth=3, zorder=10, label='Efficient Frontier')
+ax1.plot(frisks, frets, color='#38bdf8', linewidth=3, zorder=10, label='Efficient Frontier')
 
 marker_cfg = {
     'equal_weight': ('s', '#6b7280', 'Equal Weight'),
@@ -122,11 +118,9 @@ marker_cfg = {
 for key, (marker, color, label) in marker_cfg.items():
     if key in special:
         p = special[key]
-        risk_ann = p['risk'] * ann_factor_risk
-        ret_ann = p['ret'] * ann_factor_ret
-        ax1.scatter([risk_ann], [ret_ann], marker=marker, c=color, s=200, zorder=15,
+        ax1.scatter([p['risk']], [p['ret']], marker=marker, c=color, s=200, zorder=15,
                     edgecolors='white', linewidths=1.5, label=label)
-        ax1.annotate(label, (risk_ann, ret_ann), textcoords="offset points",
+        ax1.annotate(label, (p['risk'], p['ret']), textcoords="offset points",
                      xytext=(10, 8), fontsize=9, fontweight='bold', color=color)
 
 ax1.set_xlabel('Annualized Volatility')
@@ -142,8 +136,8 @@ for itype, color in TYPE_COLORS.items():
     if xs:
         ax2.scatter(xs, ys, c=color, s=3, alpha=0.25, label=f"{itype} ({len(xs)})")
 
-# Overlay annualized frontier on the scatter
-ax2.plot(frisks_ann, frets_ann, color='#38bdf8', linewidth=3, zorder=10, label='Frontier')
+# Overlay frontier on the scatter
+ax2.plot(frisks, frets, color='#38bdf8', linewidth=3, zorder=10, label='Frontier')
 
 ax2.set_xlabel('Annualized Volatility')
 ax2.set_ylabel('Annualized Return')

@@ -1,0 +1,4 @@
+data/prices/
+data/catalogues/
+__pycache__/
+*.pyc

@@ -1,8 +1,10 @@
 // case_ev.js
 import {
   configureCatalogPaths,
+  configurePricePaths,
   loadCaseData,
   getVariantSeries,
+  getPrecomputed,
   WEARS as LOADER_WEARS,
   ST_FLAGS as LOADER_ST_FLAGS,
   getCasePriceSeries as loaderCasePriceSeries,
@@ -22,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let CASE_NAME = window.currentCaseName;
 
   configureCatalogPaths({ root: "./../data/catalogues" });
+  configurePricePaths({ root: "./../data/precomputed" });
 
   const subscribers = [];
 
@@ -187,9 +190,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function reloadData() {
-    const n = choosePointCount(SETTINGS) * 2;
+    // Load precomputed data first (cached by data_loader)
+    _precomputedData = await getPrecomputed(CASE_NAME);
+
     const { items, errors } = await loadCaseData(CASE_NAME, {
-      n,
       settings: SETTINGS,
     });
     ALL_ITEMS = items || [];
@@ -197,7 +201,31 @@ document.addEventListener("DOMContentLoaded", () => {
       console.warn("Catalog load warnings:\n" + errors.join("\n"));
     }
 
-    // Build rarity map from actual collection JSON + assign specials as Exceedingly Rare
+    // Build rarity map from precomputed data or collection JSON
+    if (_precomputedData) {
+      // Use rarity info from precomputed data
+      SKINS_WITH_RARITY = ALL_ITEMS.map(name => {
+        const itemData = _precomputedData.items?.[name];
+        const rarity = itemData?.rarity || "Restricted";
+        const kind = itemData?.kind || "skin";
+        const allowST = itemData?.allow_st !== false;
+        return { Name: name, Rarity: rarity, Kind: kind, allowST, p: 0 };
+      });
+
+      // Compute per-tier counts and assign per-item probability
+      const tierCounts = SKINS_WITH_RARITY.reduce((acc, x) => {
+        acc[x.Rarity] = (acc[x.Rarity] || 0) + 1;
+        return acc;
+      }, {});
+      SKINS_WITH_RARITY = SKINS_WITH_RARITY.map(x => {
+        const pr = RARITY_TO_PROB[x.Rarity] || 0;
+        const nTier = tierCounts[x.Rarity] || 1;
+        return { ...x, p: pr / nTier };
+      });
+      return;
+    }
+
+    // Fallback: Build rarity map from actual collection JSON
     const ROOT = "./../data/catalogues";
     const caseJsonUrl = joinUrl(ROOT, "cases", slugifyFilename(CASE_NAME));
     const caseJson = await fetchJSON(caseJsonUrl);
@@ -466,12 +494,10 @@ document.addEventListener("DOMContentLoaded", () => {
     controls.appendChild(left);
     controls.appendChild(includeKey.container);
 
-    // Canvas
+    // Canvas (DPI-aware, responsive)
     const canvas = document.createElement("canvas");
-    canvas.width = 960;
-    canvas.height = 320;
     canvas.style.width = "100%";
-    canvas.style.height = "320px";
+    canvas.style.height = "360px";
     canvas.style.display = "block";
 
     host.innerHTML = "";
@@ -479,16 +505,19 @@ document.addEventListener("DOMContentLoaded", () => {
     host.appendChild(canvas);
 
     const caseChart = createCaseChart(canvas, CASE_COLORS, SETTINGS, {
-      getData: ({ settings }) => {
-        const n = choosePointCount(settings);
-        const skinsWithRarity = getSkinsWithRarity();
-        const ev = getCaseEVSeries({ settings, n, skinsWithRarity });
-        const price = loaderCasePriceSeries({
-          n,
-          settings,
-          caseName: CASE_NAME,
-        });
-        return { ev, price };
+      getData: async ({ settings }) => {
+        const precomputed = await getPrecomputed(CASE_NAME);
+        const ts = settings.timescale || "3M";
+        const tsData = precomputed?.timescales?.[ts];
+
+        const priceArr = tsData?.case_price || [];
+        const evArr = tsData?.ev || [];
+        const price = priceArr.map(([x, y]) => ({ x, y }));
+        const ev = evArr.map(([x, y]) => ({ x, y }));
+
+        // Align lengths
+        const n = Math.min(ev.length, price.length);
+        return { ev: ev.slice(0, n), price: price.slice(0, n) };
       },
     });
 
@@ -548,9 +577,7 @@ document.addEventListener("DOMContentLoaded", () => {
       chartWrap.className = "chart";
 
       const canvas = document.createElement("canvas");
-      canvas.width = 610;
-      canvas.height = 390;
-      canvas.style.width = "407px";
+      canvas.style.width = "100%";
       canvas.style.height = "260px";
       chartWrap.appendChild(canvas);
 
@@ -621,8 +648,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------------
   function createSkinChart(canvas, colors, skinName, seriesOrder, settings) {
     const ctx = canvas.getContext("2d");
-    const W = canvas.width,
-      H = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    function sizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { W: w, H: h };
+    }
+    let { W, H } = sizeCanvas();
 
     let currSettings = { ...settings };
     let simpleView = false;
@@ -750,6 +787,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function render() {
+      ({ W, H } = sizeCanvas());
       clear();
       const { ymin, ymax } = computeYRange();
       axes(ymin, ymax);
@@ -784,19 +822,35 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------------
   function createCaseChart(canvas, colors, settings, providers) {
     const ctx = canvas.getContext("2d");
-    const W = canvas.width,
-      H = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    function sizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { W: w, H: h };
+    }
+    let { W, H } = sizeCanvas();
 
     let currSettings = { ...settings };
     let includeKey = true;
-    let data = providers.getData({ settings: currSettings });
+    let data = { ev: [], price: [] };
+
+    // Initial load
+    (async () => {
+      data = await providers.getData({ settings: currSettings });
+      render();
+    })();
 
     function setIncludeKey(on) {
       includeKey = !!on;
     }
-    function updateSettings(newSettings) {
+    async function updateSettings(newSettings) {
       currSettings = { ...newSettings };
-      data = providers.getData({ settings: currSettings });
+      data = await providers.getData({ settings: currSettings });
       render();
     }
 
@@ -875,6 +929,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function render() {
+      ({ W, H } = sizeCanvas());
       clear();
       const KEY = 2.49;
       const priceShift = includeKey ? KEY : 0;
@@ -998,55 +1053,26 @@ document.addEventListener("DOMContentLoaded", () => {
     return Math.max(12, Math.floor(base * mult));
   }
 
-  function getAverageUSD({ skin, n = 48, settings, allowST = true }) {
-    const wearProbs = (fmin, fmax) => {
-      const len = Math.max(0, fmax - fmin);
-      const PRIORS = { FN: 0.0135, MW: 0.108, FT: 0.311, WW: 0.095, BS: 0.473 };
-      if (len <= 0) return PRIORS;
-      const overlap = (a0, a1, b0, b1) =>
-        Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
-      let sum = 0;
-      const raw = {};
-      for (const b of WEAR_BUCKETS) {
-        const [r0, r1] = b.range;
-        const v = overlap(
-          DEFAULT_FLOAT_RANGE.fmin,
-          DEFAULT_FLOAT_RANGE.fmax,
-          r0,
-          r1
-        );
-        raw[b.wear] = v;
-        sum += v;
-      }
-      if (sum <= 0) return PRIORS;
-      const probs = {};
-      for (const w of WEARS) probs[w] = raw[w] / sum;
-      return probs;
-    };
+  // Cache for precomputed data (set during reloadData)
+  let _precomputedData = null;
 
-    const wp = wearProbs(DEFAULT_FLOAT_RANGE.fmin, DEFAULT_FLOAT_RANGE.fmax);
-    const out = new Array(n).fill(0).map(() => ({ x: 0, y: 0 }));
+  function getAverageUSD({ skin, n: nHint = 48, settings, allowST = true }) {
+    // Read from precomputed item averages
+    const ts = settings.timescale || "3M";
+    const itemData = _precomputedData?.items?.[skin];
+    const avgArr = itemData?.average?.[ts];
 
-    let gridFrom = null;
-    for (const wear of WEARS) {
-      const pw = wp[wear] ?? 0;
-      for (const st of ST_FLAGS) {
-        if (st && !allowST) continue; // no StatTrak for gloves
-        const pst = st ? ST_PROB : allowST ? 1 - ST_PROB : 1.0;
-        const weight = pw * pst;
-
-        const s =
-          getVariantSeries({ skin, wear, st }) ||
-          new Array(n).fill(0).map((_, i) => ({ x: i / (n - 1), y: 0 }));
-
-        if (!gridFrom) gridFrom = s;
-        for (let i = 0; i < Math.min(n, s.length); i++) {
-          out[i].x = gridFrom[i].x;
-          out[i].y += weight * s[i].y;
-        }
-      }
+    if (avgArr && avgArr.length) {
+      return avgArr.map(([x, y]) => ({ x, y }));
     }
-    return out;
+
+    // Fallback: build from variant series if precomputed average is missing
+    let n = nHint;
+    for (const wear of WEARS) {
+      const s = getVariantSeries({ skin, wear, st: false });
+      if (s && s.length > 0) { n = s.length; break; }
+    }
+    return new Array(n).fill(0).map((_, i) => ({ x: i / (n - 1), y: 0 }));
   }
 
   function getSkinsWithRarity() {
@@ -1054,7 +1080,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return SKINS_WITH_RARITY.slice();
   }
 
-  function getCaseEVSeries({ settings, n, skinsWithRarity }) {
+  function getCaseEVSeries({ settings, n: nHint, skinsWithRarity }) {
+    // Read precomputed EV if available
+    const ts = settings.timescale || "3M";
+    const evArr = _precomputedData?.timescales?.[ts]?.ev;
+    if (evArr && evArr.length) {
+      return evArr.map(([x, y]) => ({ x, y }));
+    }
+
+    // Fallback: compute from variant series
+    const n = nHint || 48;
     const out = new Array(n).fill(0).map((_, i) => ({ x: i / (n - 1), y: 0 }));
     for (const skin of skinsWithRarity) {
       const name = skin.Name || skin;
@@ -1067,7 +1102,7 @@ document.addEventListener("DOMContentLoaded", () => {
         settings,
         allowST: !!skin.allowST,
       });
-      for (let i = 0; i < n; i++) out[i].y += pItem * avgUsd[i].y;
+      for (let i = 0; i < Math.min(n, avgUsd.length); i++) out[i].y += pItem * avgUsd[i].y;
     }
     return smooth(out, 2);
   }

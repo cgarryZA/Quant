@@ -1,4 +1,7 @@
-data/prices/
-data/catalogues/
+data/
+src/precompute.py
+src/alpha_investigation.py
+src/neutral_strategy.py
+case_ev/
 __pycache__/
 *.pyc
